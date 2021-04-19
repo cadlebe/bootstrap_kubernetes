@@ -214,8 +214,39 @@
         name: docker
         state: restarted
 
-# TODO: initialize kubeadm
-# TODO: copy admin to home directory
-# TODO: get resultant line to apply to workers to add them to cluster
-# TODO: apply flannel as network plugin
-# TODO: add workers to cluster
+- name: Initialize the Control Node
+  hosts: control
+  become: yes
+  vars_files:
+  - env_variables
+  tasks:
+    - name: Initializing Kubernetes cluster
+      shell: kubeadm init --apiserver-advertise-address {{ad_addr}} --pod-network-cidr={{cidr_v}}
+      register: output
+
+    - name: Storing Logs and Generated token for future purpose.
+      local_action: copy content={{ output.stdout }} dest={{ token_file }}
+      become: False
+
+    - name: Copying required files
+      shell: |
+        mkdir -p $HOME/.kube
+        sudo cp -f /etc/kubernetes/admin.conf $HOME/.kube/config
+        sudo chown $(id -u):$(id -g) $HOME/.kube/config
+    - name: Install Network Add-on
+      command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+
+- name: Initialize worker nodes
+  hosts: workers
+  become: yes
+  vars_files:
+  - env_variables
+  tasks:
+  - name: Copying token to worker nodes
+    copy: src={{ token_file }} dest=join_token
+
+  - name: Joining worker nodes with kubernetes master
+    shell: |
+     kubeadm reset -f
+     cat join_token | tail -2 > out.sh
+     sh out.sh
