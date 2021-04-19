@@ -72,6 +72,19 @@
         permanent: true
         port: 30000-32767/tcp
 
+- name: Disable SWAP
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Disable SWAP since kubernetes can't work with the swap enabled (1/2)
+      shell: |
+        swapoff -a
+    - name: Disable SWAP in fstab since kuberenetes can't work with swap enabled (2/2)
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+        replace: '# \1'
+
 - name: Install prerequisites for installing kubernetes tools and Docker
   hosts: cluster
   become: yes
