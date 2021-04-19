@@ -1,0 +1,22 @@
+all:
+  children:
+    control:
+      hosts:
+        k8s-control:
+
+    workers:
+      hosts:
+        k8s-worker-01:
+        k8s-worker-02:
+
+    ubuntu:
+      hosts:
+        k8s-control:
+        k8s-worker-01:
+        k8s-worker-02:
+
+    cluster:
+      hosts:
+        k8s-control:
+        k8s-worker-01:
+        k8s-worker-02:
