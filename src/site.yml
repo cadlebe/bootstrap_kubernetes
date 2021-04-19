@@ -112,24 +112,32 @@
         repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
         state: present
 
-- name: Install required software for control
+- name: Install kubectl on control
   hosts: control
   become: yes
   tasks:
-    - name: Install, kubeadm, and kubectl
+    - name: Install kubectl
       apt:
-        name:
-          - kubeadm
-          - kubectl
+        name: kubectl
+        state: latest
+        update_cache: yes
+    - name: Hold kubectl from being updated
+      dpkg_selections:
+        name: kubectl
+        selection: hold
+
+- name: Install kubeadm on all nodes in cluster
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Install kubeadm
+      apt:
+        name: kubeadm
         state: latest
         update_cache: yes
     - name: Hold kubeadm from being updated
       dpkg_selections:
         name: kubeadm
-        selection: hold
-    - name: Hold kubectl from being updated
-      dpkg_selections:
-        name: kubectl
         selection: hold
 
 - name: Install kubelet on all nodes in cluster
