@@ -147,3 +147,50 @@
           - containerd.io
         state: latest
         update_cache: yes
+
+- name: Setup Containerd and Docker for systemd cgroups
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Create and populate /etc/docker/daemon.json
+      # We will use a template to push this file to the system
+      template:
+        src: daemon.json.j2
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+      notify:
+        - enable docker
+        - daemon-reload
+        - restart docker
+    - name: Add block of text to /etc/containerd/config.toml to use systemd cgroups
+      blockinfile:
+        path: /etc/containerd/config.toml
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        block: |
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+            [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+              SystemdCgroup = true
+      notify:
+        - restart containerd
+
+  handlers:
+    - name: restart containerd
+      become: yes
+      service:
+        name: containerd
+        state: restarted
+    - name: enable docker
+      become: yes
+      service:
+        name: containerd
+        enabled: yes
+    - name: daemon-reload
+      become: yes
+      ansible.builtin.systemd:
+        daemon-reload: yes
+    - name: restart docker
+      become: yes
+      service:
+        name: docker
+        state: restarted
