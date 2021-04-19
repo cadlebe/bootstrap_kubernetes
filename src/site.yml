@@ -18,7 +18,44 @@
         name: "firewalld"
         state: latest
 
+- name: Setup firewall control node
+  # Open ports needed for general basic kubernetes operations in the cluster.
+  hosts: control
+  become: yes
+  tasks:
+    - name: Open kubernetes API Server port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 6443/tcp
+    - name: Open etcd server client API port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 2379-2380/tcp
+    - name: Open kubelet API port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 10250/tcp
+    - name: Open kube-scheduler port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 10251/tcp
+    - name: Open kube-controller-manager port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 10252/tcp
+
 - name: Setup firewall worker nodes
+  # Open ports needed for general basic kubernetes operations in the cluster.
   hosts: workers
   become: yes
   tasks:
