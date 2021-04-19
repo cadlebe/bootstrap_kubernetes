@@ -1,0 +1,112 @@
+---
+- name: Update Ubuntu Servers
+  hosts: ubuntu
+  tasks:
+    - name: Update all packages to the latest version
+      become: yes
+      apt:
+        name: "*"
+        state: latest
+        update_cache: yes
+
+- name: Install firewalld
+  hosts: ubuntu
+  tasks:
+    - name: Install firewalld
+      become: yes
+      apt:
+        name: "firewalld"
+        state: latest
+
+- name: Setup firewall worker nodes
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Open kubelet API port (inbound)
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 10250/tcp
+    - name: Open NodePort Services port range (inbound)
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 30000-32767/tcp
+
+- name: Install prerequisites for installing kubernetes tools and Docker
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Install pre-requisites to install kubernetes tools
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+        state: latest
+    - name: Add the Google public signing key
+      apt_key:
+        url: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+        state: present
+    - name: Add google apt repository for Kubernetes
+      ansible.builtin.apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+    - name: Add the Docker public signing key
+      apt_key:
+        url: "https://download.docker.com/linux/ubuntu/gpg"
+        state: present
+    - name: Add docker apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+        state: present
+
+- name: Install required software for control
+  hosts: control
+  become: yes
+  tasks:
+    - name: Install, kubeadm, and kubectl
+      apt:
+        name:
+          - kubeadm
+          - kubectl
+        state: latest
+        update_cache: yes
+
+    - name: Hold kubeadm from being updated
+      dpkg_selections:
+        name: kubeadm
+        selection: hold
+
+    - name: Hold kubectl from being updated
+      dpkg_selections:
+        name: kubectl
+        selection: hold
+
+- name: Install kubelet on all nodes in cluster
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Install kubelet
+      apt:
+        name: kubelet
+        state: latest
+        update_cache: yes
+    - name: Hold kubelet from being updated
+      dpkg_selections:
+        name: kubelet
+        selection: hold
+
+- name: Install docker on workers
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Install docker-ce
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: latest
+        update_cache: yes
