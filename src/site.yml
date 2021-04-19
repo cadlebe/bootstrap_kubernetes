@@ -147,7 +147,7 @@
         update_cache: yes
 
 - name: Setup Containerd and Docker for systemd cgroups
-  hosts: workers
+  hosts: cluster
   become: yes
   tasks:
     - name: Create and populate /etc/docker/daemon.json
