@@ -1,0 +1,252 @@
+---
+- name: Update Ubuntu Servers
+  hosts: ubuntu
+  tasks:
+    - name: Update all packages to the latest version
+      become: yes
+      apt:
+        name: "*"
+        state: latest
+        update_cache: yes
+
+- name: Install firewalld
+  hosts: ubuntu
+  tasks:
+    - name: Install firewalld
+      become: yes
+      apt:
+        name: "firewalld"
+        state: latest
+
+- name: Setup firewall control node
+  # Open ports needed for general basic kubernetes operations in the cluster.
+  hosts: control
+  become: yes
+  tasks:
+    - name: Open kubernetes API Server port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 6443/tcp
+    - name: Open etcd server client API port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 2379-2380/tcp
+    - name: Open kubelet API port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 10250/tcp
+    - name: Open kube-scheduler port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 10251/tcp
+    - name: Open kube-controller-manager port
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 10252/tcp
+
+- name: Setup firewall worker nodes
+  # Open ports needed for general basic kubernetes operations in the cluster.
+  hosts: workers
+  become: yes
+  tasks:
+    - name: Open kubelet API port (inbound)
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 10250/tcp
+    - name: Open NodePort Services port range (inbound)
+      firewalld:
+        state: enabled
+        immediate: yes
+        permanent: true
+        port: 30000-32767/tcp
+
+- name: Disable SWAP
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Disable SWAP since kubernetes can't work with the swap enabled (1/2)
+      shell: |
+        swapoff -a
+    - name: Disable SWAP in fstab since kuberenetes can't work with swap enabled (2/2)
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+        replace: '# \1'
+
+- name: Install prerequisites for installing kubernetes tools and Docker
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Install pre-requisites to install kubernetes tools
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+        state: latest
+    - name: Add the Google public signing key
+      apt_key:
+        url: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+        state: present
+    - name: Add google apt repository for Kubernetes
+      ansible.builtin.apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+    - name: Add the Docker public signing key
+      apt_key:
+        url: "https://download.docker.com/linux/ubuntu/gpg"
+        state: present
+    - name: Add docker apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable"
+        state: present
+
+- name: Install kubectl on control
+  hosts: control
+  become: yes
+  tasks:
+    - name: Install kubectl
+      apt:
+        name: kubectl
+        state: latest
+        update_cache: yes
+    - name: Hold kubectl from being updated
+      dpkg_selections:
+        name: kubectl
+        selection: hold
+
+- name: Install kubeadm on all nodes in cluster
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Install kubeadm
+      apt:
+        name: kubeadm
+        state: latest
+        update_cache: yes
+    - name: Hold kubeadm from being updated
+      dpkg_selections:
+        name: kubeadm
+        selection: hold
+
+- name: Install kubelet on all nodes in cluster
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Install kubelet
+      apt:
+        name: kubelet
+        state: latest
+        update_cache: yes
+    - name: Hold kubelet from being updated
+      dpkg_selections:
+        name: kubelet
+        selection: hold
+
+- name: Install docker on all nodes in cluster
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Install docker-ce
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: latest
+        update_cache: yes
+
+- name: Setup Containerd and Docker for systemd cgroups
+  hosts: cluster
+  become: yes
+  tasks:
+    - name: Create and populate /etc/docker/daemon.json
+      # We will use a template to push this file to the system
+      template:
+        src: daemon.json.j2
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+      notify:
+        - enable docker
+        - daemon-reload
+        - restart docker
+    - name: Add block of text to /etc/containerd/config.toml to use systemd cgroups
+      blockinfile:
+        path: /etc/containerd/config.toml
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        block: |
+          [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+            [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+              SystemdCgroup = true
+      notify:
+        - restart containerd
+
+  handlers:
+    - name: restart containerd
+      become: yes
+      service:
+        name: containerd
+        state: restarted
+    - name: enable docker
+      become: yes
+      service:
+        name: containerd
+        enabled: yes
+    - name: daemon-reload
+      become: yes
+      ansible.builtin.systemd:
+        daemon-reload: yes
+    - name: restart docker
+      become: yes
+      service:
+        name: docker
+        state: restarted
+
+- name: Initialize the Control Node
+  hosts: control
+  become: yes
+  vars_files:
+  - env_variables
+  tasks:
+    - name: Initializing Kubernetes cluster
+      shell: kubeadm init --apiserver-advertise-address {{ad_addr}} --pod-network-cidr={{cidr_v}}
+      register: output
+
+    - name: Storing Logs and Generated token for future purpose.
+      local_action: copy content={{ output.stdout }} dest={{ token_file }}
+      become: False
+
+    - name: Copying required files
+      shell: |
+        mkdir -p $HOME/.kube
+        sudo cp -f /etc/kubernetes/admin.conf $HOME/.kube/config
+        sudo chown $(id -u):$(id -g) $HOME/.kube/config
+    - name: Install Network Add-on
+      command: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+
+- name: Initialize worker nodes
+  hosts: workers
+  become: yes
+  vars_files:
+  - env_variables
+  tasks:
+  - name: Copying token to worker nodes
+    copy: src={{ token_file }} dest=join_token
+
+  - name: Joining worker nodes with kubernetes master
+    shell: |
+     kubeadm reset -f
+     cat join_token | tail -2 > out.sh
+     sh out.sh
