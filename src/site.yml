@@ -135,8 +135,8 @@
         name: kubelet
         selection: hold
 
-- name: Install docker on workers
-  hosts: workers
+- name: Install docker on all nodes in cluster
+  hosts: cluster
   become: yes
   tasks:
     - name: Install docker-ce
