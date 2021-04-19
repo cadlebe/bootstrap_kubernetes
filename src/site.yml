@@ -213,3 +213,9 @@
       service:
         name: docker
         state: restarted
+
+# TODO: initialize kubeadm
+# TODO: copy admin to home directory
+# TODO: get resultant line to apply to workers to add them to cluster
+# TODO: apply flannel as network plugin
+# TODO: add workers to cluster
