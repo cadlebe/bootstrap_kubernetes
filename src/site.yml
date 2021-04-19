@@ -110,12 +110,10 @@
           - kubectl
         state: latest
         update_cache: yes
-
     - name: Hold kubeadm from being updated
       dpkg_selections:
         name: kubeadm
         selection: hold
-
     - name: Hold kubectl from being updated
       dpkg_selections:
         name: kubectl
